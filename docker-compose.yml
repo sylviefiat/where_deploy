@@ -1,0 +1,9 @@
+# WHERE DEPLOY
+version: '2'
+services:
+
+  wherecron:
+    hostname: wherecron
+    image: sylviefiat/cron-python
+    volumes:
+      - ./wherecron_data/app/:/app/
