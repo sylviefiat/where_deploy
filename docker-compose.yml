@@ -4,7 +4,8 @@ services:
 
   wherecron:
     hostname: wherecron
-    image: xordiv/docker-alpine-cron
+    image: sylviefiat/docker-alpine-cron
     volumes:
       - ./wherecron_data/crontabs:/etc/cron.d
       - ./wherecron_data/scripts:/scripts
+    
