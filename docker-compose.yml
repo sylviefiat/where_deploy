@@ -1,11 +1,25 @@
 # WHERE DEPLOY
 version: '2'
 services:
+  wheredb:
+    hostname: wheredb
+    image: sylviefiat/alpine-mysql
+    volumes:
+      - ./wheredb_data:/var/lib/mysql
+    ports:
+      - "3308:3306"
+    environment:
+      - MYSQL_USER=docker
+      - MYSQL_USER_PWD=docker
+      - MYSQL_ROOT_PWD=docker
+      - MYSQL_USER_DB=baleines
 
   wherecron:
     hostname: wherecron
     image: sylviefiat/docker-alpine-cron
+    privileged: true
     volumes:
-      - ./wherecron_data/crontabs:/etc/cron.d
+      - ./wherecron_data/crontabs:/etc/crontabs/
       - ./wherecron_data/scripts:/scripts
-    
+#      - /opt/docker/where_deploy/wherecron_data/docker:/var/lib/docker
+      - ./wherecron_data/docker:/var/lib/docker

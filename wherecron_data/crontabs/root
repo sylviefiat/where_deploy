@@ -1,0 +1,3 @@
+# crontab running everyday at 7:30
+50 4 * * *  docker run --rm --name argos-where -v /scripts:/scripts -w /scripts python:3-alpine python /scripts/argos.py >> /var/log/cron.log 2>&1
+
