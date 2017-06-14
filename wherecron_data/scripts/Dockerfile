@@ -10,7 +10,8 @@ RUN set -ex; \
 	pip install --no-cache-dir -r requirements.txt; \
 	apk del .fetch-deps
 
-COPY . .
+
+COPY ssmtp.conf /etc/ssmtp/ssmtp.conf
 
 CMD [ "python", "argos.py" ]
 
