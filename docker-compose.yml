@@ -17,9 +17,12 @@ services:
   wherecron:
     hostname: wherecron
     image: sylviefiat/docker-alpine-cron
-    privileged: true
+#    privileged: true
     volumes:
       - ./wherecron_data/crontabs:/etc/crontabs/
       - ./wherecron_data/scripts:/scripts
 #      - /opt/docker/where_deploy/wherecron_data/docker:/var/lib/docker
-      - ./wherecron_data/docker:/var/lib/docker
+#      - ./wherecron_data/docker:/var/lib/docker
+      - /var/run/docker.sock:/var/run/docker.sock
+    links:
+      - wheredb:wheredb
