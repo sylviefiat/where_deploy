@@ -6,16 +6,11 @@ import datetime
 import dateutil.parser
 import smtplib
 import mimetypes
-#import MySQLdb
-
+from os.path import basename
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
-from email import encoders
-from email.message import Message
-from email.mime.audio import MIMEAudio
-from email.mime.base import MIMEBase
-from email.mime.image import MIMEImage
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from email.utils import COMMASPACE, formatdate
 from subprocess import Popen, PIPE
 import xml.dom.minidom
 import xml.etree.ElementTree as ET
@@ -105,10 +100,11 @@ def checkTableExists(dbcon, tablename):
 
 def createTable(dbcon):
     dbcur = dbcon.cursor()
-    dbcur.execute("""CREATE TABLE where_whales(programNumber INT,platformId INT,platformType VARCHAR(255),
+    dbcur.execute("""CREATE TABLE where_whales(id INT NOT NULL AUTO_INCREMENT, programNumber INT,platformId INT,platformType VARCHAR(255),
     platformModel VARCHAR(255),platformName VARCHAR(255),satellite VARCHAR(255),bestMsgDate TIMESTAMP,duration INT,
     nbMessage INT,message120 INT, bestLevel INT,frequency FLOAT,locationDate TIMESTAMP,latitude FLOAT,
-    longitude FLOAT,altitude FLOAT,locationClass VARCHAR(255), gpsSpeed VARCHAR(255),gpsHeading VARCHAR(255),PRIMARY KEY (platformId, locationDate))""")
+    longitude FLOAT,altitude FLOAT,locationClass VARCHAR(255), gpsSpeed VARCHAR(255),gpsHeading VARCHAR(255),the_geom GEOMETRY,PRIMARY KEY (id), UNIQUE KEY (platformId, locationDate))""")
+    dbcur.execute("""CREATE TRIGGER update_geom BEFORE INSERT ON where_whales FOR EACH ROW SET NEW.the_geom = PointFromText(CONCAT('POINT(',NEW.longitude,' ',NEW.latitude,')'),4326);""")
     dbcur.close()
 	
 
@@ -123,10 +119,18 @@ def insert_csv(host,user,passwd,db,csvfile):
     reader = csv.reader(open(csvfile,"r"),delimiter=';')
     next(reader, None) 
     for row in reader:
+        bestMsgDate= None if row[6]=='' else dateutil.parser.parse(row[6])
+        frequency= 0 if row[11]=='' else float(row[11])
+        locationDate= None if row[12]=='' else dateutil.parser.parse(row[12])
+        latitude= 0 if row[13]=='' else float(row[13])
+        longitude= 0 if row[14]=='' else float(row[14])
+        altitude= 0 if row[15]=='' else float(row[15])
         cursor.execute("""INSERT IGNORE INTO where_whales(programNumber,platformId,platformType,platformModel,platformName,
         satellite,bestMsgDate,duration,nbMessage,message120,bestLevel,frequency,locationDate,latitude,longitude,altitude,
-        locationClass,gpsSpeed,gpsHeading) VALUES('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}') 
-        """.format(int(row[0]),int(row[1]),row[2],row[3],row[4],row[5],dateutil.parser.parse(row[6]),int(row[7]),int(row[8]),int(row[9]),int(row[10]),float(row[11]),dateutil.parser.parse(row[12]),float(row[13]),float(row[14]),float(row[15]),row[16],row[17],row[18]))
+        locationClass,gpsSpeed,gpsHeading) 
+        VALUES('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}') 
+        """.format(int(row[0]),int(row[1]),row[2],row[3],row[4],row[5],bestMsgDate,int(row[7]),int(row[8]),
+            int(row[9]),int(row[10]),frequency,locationDate,latitude,longitude,altitude,row[16],row[17],row[18]))
  
     #close the connection to the database.
     mydb.commit()
@@ -135,7 +139,7 @@ def insert_csv(host,user,passwd,db,csvfile):
 def convertCSV_for_DTSI(file):    
     with open(file, 'r', encoding="utf8") as f:        
         fieldnames = ['platformId','locationDate','latitude','longitude','chronologie'] 
-        filename= "ArgosData_WHERE__"+datetime.datetime.today().strftime('%Y-%m-%d')+"_AFFMAR_DTSI.csv"
+        filename= "ArgosData_WHERE_"+datetime.datetime.today().strftime('%Y-%m-%d')+"_AFFMAR_DTSI.csv"
         writer = csv.DictWriter(open("./export/"+filename, 'w'), fieldnames=fieldnames,delimiter=';')
         writer.writeheader()
 
@@ -173,6 +177,27 @@ def sendcsv_mail_with_sendmail(expediteur,destinataire,fileToSend):
     p = Popen(["/usr/sbin/sendmail", "-t"], stdin=PIPE)
     p.communicate(msg.as_bytes())
 
+def sendcsv_mail_with_attachment(send_from, send_to, subject, text, files=None, server="127.0.0.1"):
+    assert isinstance(send_to, list)
+    msg = MIMEMultipart()
+    msg['From'] = send_from
+    msg['To'] = COMMASPACE.join(send_to)
+    msg['Date'] = formatdate(localtime=True)
+    msg['Subject'] = subject
+    msg.attach(MIMEText(text))
+    print(files)
+    for f in files or []:
+        with open(f, "rb") as fil:
+            part = MIMEApplication(
+                fil.read(),
+                Name=basename(f)
+            )
+            part['Content-Disposition'] = 'attachment; filename="%s"' % basename(f)
+            msg.attach(part)
+    smtp = smtplib.SMTP(server)
+    smtp.sendmail(send_from, send_to, msg.as_string())
+    smtp.close()
+
 
 if __name__ == '__main__':
     # if running on monday query 4 days, orherwise (thursday) query 3 days
@@ -187,6 +212,8 @@ if __name__ == '__main__':
     # convert for DTSI
     dtsi_file = convertCSV_for_DTSI(argos_file)
     # send mail
-    sendcsv_mail_with_sendmail("sylvie.fiat@ird.fr","sylvie.fiat@ird.fr",dtsi_file)
+    #sendcsv_mail_with_sendmail("sylvie.fiat@ird.fr","sylvie.fiat@ird.fr",dtsi_file)
+    
+    sendcsv_mail_with_attachment("sylvie.fiat@ird.fr",["sylvie.fiat@ird.fr"], "Nouveau relevé Argos de positions Baleines projet WHERE","Bonjour, en pièce jointe le nouveau relevé Argos des positions des baleines du projet WHERE, Cordialement, Sylvie",[dtsi_file],"172.17.0.1")
 
     

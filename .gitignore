@@ -1,2 +1,5 @@
 wheredb_data/
 wherecron_data/docker/
+wherecron_data/scripts/export/*
+wherecron_data/scripts/core.25
+wherecron_data/scripts/email.txt

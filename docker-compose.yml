@@ -7,7 +7,7 @@ services:
     volumes:
       - ./wheredb_data:/var/lib/mysql
     ports:
-      - "3308:3306"
+      - "3506:3306"
     environment:
       - MYSQL_USER=docker
       - MYSQL_USER_PWD=docker
@@ -17,11 +17,16 @@ services:
   wherecron:
     hostname: wherecron
     image: sylviefiat/docker-alpine-cron
+    ports:
+      - "29:25"
     volumes:
       - ./wherecron_data/crontabs:/etc/crontabs/
       - ./wherecron_data/scripts:/scripts
       - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "27:25"
     links:
       - wheredb:wheredb
+
+networks:
+  default:
+    external:
+      name: entropiedeploy_default
