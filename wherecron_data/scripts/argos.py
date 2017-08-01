@@ -1,9 +1,11 @@
 import http.client
 import re
+import os
 import csv
 import math
 import datetime
 import dateutil.parser
+import ftplib
 import smtplib
 import mimetypes
 from os.path import basename
@@ -65,10 +67,19 @@ def getCsv(username, password, id, type="platform", nbPassByPtt=10, nbDaysFromNo
     data = cleanupCsv(data)
     return data
 
-def saveCsv(data):
-    filename= "ArgosData_WHERE_"+datetime.datetime.today().strftime('%Y-%m-%d')+"_FULL.csv"
-    with open("./export/"+filename, 'w') as f:
-        f.write(data)
+def saveCsv(data,platformName):
+    filename= "ArgosData_WHERE_"+datetime.datetime.today().strftime('%Y-%m-%d')+"_"+platformName+"_FULL.csv"
+    data1=data.split('\n')
+    for idx,data2 in enumerate(data1):        
+        if idx==0 :
+            data4=data2
+        if idx > 0:
+            data3 = data2.split(';')
+            data3[4]="\""+platformName+"\""
+            data2 = ';'.join(data3)
+            data4=data4+"\n"+';'.join(data3)
+    with open("./export/"+filename, 'w') as f:        
+        f.write(data4)
     return "./export/"+filename
 
 def calcul_speed(latitude1,longitude1, date1, latitude2, longitude2, date2):
@@ -136,33 +147,38 @@ def insert_csv(host,user,passwd,db,csvfile):
     mydb.commit()
     cursor.close()
 
-def convertCSV_for_DTSI(file):    
+def convertCSV_for_DTSI(file,platformName):
+    PLATFORMID_FIELDID=0
+    PLATFORMNAME_FIELDID=1
+    LOCATIONDATE_FIELDID=2
+    LATITUDE_FIELDID=3
+    LONGITUDE_FIELDID=4
     with open(file, 'r', encoding="utf8") as f:        
-        fieldnames = ['platformId','locationDate','latitude','longitude','chronologie'] 
-        filename= "ArgosData_WHERE_"+datetime.datetime.today().strftime('%Y-%m-%d')+"_AFFMAR_DTSI.csv"
+        fieldnames = ['platformId','platformName','locationDate','latitude','longitude'] 
+        filename= "ArgosData_WHERE_"+datetime.datetime.today().strftime('%Y-%m-%d')+"_"+platformName+"_AFFMAR_DTSI.csv"
         writer = csv.DictWriter(open("./export/"+filename, 'w'), fieldnames=fieldnames,delimiter=';')
         writer.writeheader()
 
         reader = csv.DictReader(f,delimiter=';')
         nid = 0        
         for row in reader:          
-            if(row[fieldnames[0]]!=nid):
+            if(row[fieldnames[PLATFORMID_FIELDID]]!=nid):
                 latitude1 = 0
                 longitude1 = 0
                 date1 = 0        
                 n = 1
-                nid=row[fieldnames[0]]
-            elif not((latitude1==row[fieldnames[3]] and longitude1==row[fieldnames[2]] and date1==row[fieldnames[1]]) or row[fieldnames[1]]==''):                
+                nid=row[fieldnames[PLATFORMID_FIELDID]]
+            elif not((latitude1==row[fieldnames[LATITUDE_FIELDID]] and longitude1==row[fieldnames[LONGITUDE_FIELDID]] and date1==row[fieldnames[LOCATIONDATE_FIELDID]]) or row[fieldnames[LOCATIONDATE_FIELDID]]==''):                
                 if (latitude1==0 and longitude1==0 and date1==0):
                     distance,temps,vitesse=0,0,0
                 else:
-                    distance,temps,vitesse=calcul_speed(latitude1,longitude1, date1, row[fieldnames[3]], row[fieldnames[2]], row[fieldnames[1]])
+                    distance,temps,vitesse=calcul_speed(latitude1,longitude1, date1, row[fieldnames[LATITUDE_FIELDID]], row[fieldnames[LONGITUDE_FIELDID]], row[fieldnames[LOCATIONDATE_FIELDID]])
                 if(vitesse<12):
-                    writer.writerow({fieldnames[0]: row[fieldnames[0]], fieldnames[1]: row[fieldnames[1]], fieldnames[2]: row[fieldnames[2]], fieldnames[3]: row[fieldnames[3]],fieldnames[4]: n})
-                    nid1=row[fieldnames[0]]
-                    latitude1=row[fieldnames[3]]
-                    longitude1=row[fieldnames[2]]
-                    date1=row[fieldnames[1]]
+                    writer.writerow({fieldnames[PLATFORMID_FIELDID]: row[fieldnames[PLATFORMID_FIELDID]], fieldnames[PLATFORMNAME_FIELDID]: row[fieldnames[PLATFORMNAME_FIELDID]], fieldnames[LOCATIONDATE_FIELDID]: row[fieldnames[LOCATIONDATE_FIELDID]], fieldnames[LATITUDE_FIELDID]: row[fieldnames[LATITUDE_FIELDID]], fieldnames[LONGITUDE_FIELDID]: row[fieldnames[LONGITUDE_FIELDID]]})
+                    nid1=row[fieldnames[PLATFORMID_FIELDID]]
+                    latitude1=row[fieldnames[LATITUDE_FIELDID]]
+                    longitude1=row[fieldnames[LONGITUDE_FIELDID]]
+                    date1=row[fieldnames[LOCATIONDATE_FIELDID]]
                     n = n+1
     return "./export/"+filename
 
@@ -198,22 +214,37 @@ def sendcsv_mail_with_attachment(send_from, send_to, subject, text, files=None, 
     smtp.sendmail(send_from, send_to, msg.as_string())
     smtp.close()
 
+def sendcsv_ftp(ftpserver,user,pwd,path,f):
+    session = ftplib.FTP(ftpserver,user,pwd)
+    filename = os.path.basename(os.path.normpath(f))    # get file name
+    file = open(f,'rb')                                 # file to send
+    session.storbinary('STOR '+filename, file)          # send the file
+    file.close()                                        # close file and FTP
+    session.quit()
 
 if __name__ == '__main__':
+    # define the tracked whales
+    whales = [[154185,'Niaouli'],[34215,'Kauri']]
     # if running on monday query 4 days, orherwise (thursday) query 3 days
     dayofweek=datetime.datetime.today().weekday()
     dayfromnow=4 if (dayofweek==1) else 3
-    # query argos web service
-    argos_csv=getCsv('GARRIGUE','BOSSE_2016',6145,'program',dayfromnow, 20, "true", "false")
-    #save csv into file
-    argos_file=saveCsv(argos_csv)
-    # save data into database
-    insert_csv('wheredb','root','docker','baleines',argos_file)
-    # convert for DTSI
-    dtsi_file = convertCSV_for_DTSI(argos_file)
-    # send mail
-    #sendcsv_mail_with_sendmail("sylvie.fiat@ird.fr","sylvie.fiat@ird.fr",dtsi_file)
-    
-    sendcsv_mail_with_attachment("sylvie.fiat@ird.fr",["sylvie.fiat@ird.fr"], "Nouveau relevé Argos de positions Baleines projet WHERE","Bonjour, en pièce jointe le nouveau relevé Argos des positions des baleines du projet WHERE, Cordialement, Sylvie",[dtsi_file],"172.17.0.1")
-
+    #dayfromnow=10
+    mail_attachments=[]
+    for whale in whales or []:
+        # query argos web service by whale id (program 6145)
+        argos_csv=getCsv('GARRIGUE','BOSSE_2016',whale[0],'platform',dayfromnow, 20, "true", "false")
+        #save csv into file
+        argos_file=saveCsv(argos_csv,whale[1])
+        # save data into database
+        insert_csv('wheredb','root','docker','baleines',argos_file)
+        # convert for DTSI
+        dtsi_file = convertCSV_for_DTSI(argos_file,whale[1])
+        # updload on ftp
+        sendcsv_ftp("ftpriv.ird.nc","maracas","unM3@1*cs","/",dtsi_file)
+        # add file as email attachment
+        mail_attachments.append(dtsi_file)
+    # send mail   
+    print(mail_attachments) 
+    sendcsv_mail_with_attachment("sylvie.fiat@ird.fr",["sylvie.fiat@ird.fr","Pierre.WEISSE@gouv.nc"], "Nouveau relevé Argos de positions Baleines projet WHERE","Bonjour, en pièce jointe le nouveau relevé Argos des positions des baleines du projet WHERE, Cordialement, Sylvie",mail_attachments,"172.17.0.1")
+        
     
