@@ -236,7 +236,13 @@ def sendcsv_ftp(ftpserver,user,pwd,path,f):
 
 if __name__ == '__main__':
     # define the tracked whales
-    whales = [[154185,'Niaouli','2017-07-24 07:29:58+00:00'],[34215,'Kauri','2017-07-24 07:30:02+00:00'], [34223,'Alis','2017-08-17 15:54:01+00:00']]#,[34227,'Sunset','2017-08-18 07:35:51+00:00']]
+    whales = [[154185,'Niaouli','2017-07-24 07:29:58+00:00'],
+    [34215,'Kauri','2017-07-24 07:30:02+00:00'],
+    [34223,'Alis','2017-08-17 10:42:00+00:00'],
+    [34227,'Sunset','2017-08-18 07:35:00+00:00'],
+    [34228,'Ricrac','2017-08-20 05:47:00+00:00'],
+    [34222,'Mouss','2017-08-22 09:15:00+00:00'],
+    [34226 ,'Splash','2017-08-22 18:12:00+00:00']]
     # if running on monday query 4 days, orherwise (thursday) query 3 days
     
     dayofweek=datetime.today().weekday()
@@ -249,7 +255,6 @@ if __name__ == '__main__':
     positionstoget=200
     #mail_attachments=[]
     for whale in whales or []:
-        print(whale)
         # query argos web service by whale id (program 6145)
         argos_csv=getCsv('GARRIGUE','BOSSE_2016',whale[0],'platform',positionstoget, 20, "true", "false")
         #save csv into file
