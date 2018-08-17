@@ -26,7 +26,7 @@ def argosRequest(request):
     conn = http.client.HTTPConnection(ARGOS_HOST)
     conn.request("POST", "/argosDws/services/DixService", request)
     response = conn.getresponse()
-    #print response.status, response.reason, response.msg
+    #print(response)
     data = response.read().decode('utf-8')    
     conn.close()
     return data
@@ -43,7 +43,6 @@ def getCsv(username, password, id, type="platform", nbPassByPtt=10, nbDaysFromNo
         type = "<typ:programNumber>" + str(id) + "</typ:programNumber>"
     else:
         type = "<typ:platformId>" + str(id) + "</typ:platformId>"
-
     request = (
         '<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope" xmlns:typ="http://service.dataxmldistribution.argos.cls.fr/types">\n'
         '<soap:Header/>\n'
@@ -114,10 +113,10 @@ def createTable(dbcon):
     dbcur.execute("""CREATE TABLE where_whales(id INT NOT NULL AUTO_INCREMENT, programNumber INT,platformId INT,platformType VARCHAR(255),
     platformModel VARCHAR(255),platformName VARCHAR(255),satellite VARCHAR(255),bestMsgDate TIMESTAMP,duration INT,
     nbMessage INT,message120 INT, bestLevel INT,frequency FLOAT,locationDate TIMESTAMP,latitude FLOAT,
-    longitude FLOAT,altitude FLOAT,locationClass VARCHAR(255), gpsSpeed VARCHAR(255),gpsHeading VARCHAR(255),the_geom GEOMETRY,PRIMARY KEY (id), UNIQUE KEY (platformId, locationDate))""")
+    longitude FLOAT,altitude FLOAT,locationClass VARCHAR(255), gpsSpeed VARCHAR(255),gpsHeading VARCHAR(255),the_geom GEOMETRY, is_valid BOOLEAN,PRIMARY KEY (id), UNIQUE KEY (platformId, locationDate))""")
     dbcur.execute("""CREATE TRIGGER update_geom BEFORE INSERT ON where_whales FOR EACH ROW SET NEW.the_geom = PointFromText(CONCAT('POINT(',NEW.longitude,' ',NEW.latitude,')'),4326);""")
     dbcur.close()
-	
+ 	
 
 def insert_csv(host,user,passwd,db,csvfile,startdate):
     mydb = pymysql.connect(host=host,
@@ -128,23 +127,34 @@ def insert_csv(host,user,passwd,db,csvfile,startdate):
     if not checkTableExists(mydb,"where_whales"):
         createTable(mydb)
     reader = csv.reader(open(csvfile,"r"),delimiter=';')
-    next(reader, None) 
+    next(reader, None)
+    locationDate=None
+    latitude=0
+    longitude=0
     for row in reader:
         sDate= dateutil.parser.parse(startdate)
         bestMsgDate= None if row[6]=='' else dateutil.parser.parse(row[6])
         frequency= 0 if row[11]=='' else float(row[11])
+        dateSave = locationDate
         locationDate= None if row[12]=='' else dateutil.parser.parse(row[12])
+        latSave = latitude
         latitude= 0 if row[13]=='' else float(row[13])
+        lonSave = longitude
         longitude= 0 if row[14]=='' else float(row[14])
         altitude= 0 if row[15]=='' else float(row[15])
+        isValid = 1
+        if(dateSave and latSave>0 and lonSave>0):
+            distance,temps,vitesse=calcul_speed(latSave,longSave,dateSave,latitude,longitude, locationDate)
+            if(vitesse > 12):
+                isValid = 0		
         
         if(locationDate!=None and locationDate>=sDate):
             cursor.execute("""INSERT IGNORE INTO where_whales(programNumber,platformId,platformType,platformModel,platformName,
             satellite,bestMsgDate,duration,nbMessage,message120,bestLevel,frequency,locationDate,latitude,longitude,altitude,
-            locationClass,gpsSpeed,gpsHeading) 
-            VALUES('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}') 
+            locationClass,gpsSpeed,gpsHeading,is_valid) 
+            VALUES('{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}','{}') 
             """.format(int(row[0]),int(row[1]),row[2],row[3],row[4],row[5],bestMsgDate,int(row[7]),int(row[8]),
-                int(row[9]),int(row[10]),frequency,locationDate,latitude,longitude,altitude,row[16],row[17],row[18]))
+                int(row[9]),int(row[10]),frequency,locationDate,latitude,longitude,altitude,row[16],row[17],row[18],isValid))
  
     #close the connection to the database.
     mydb.commit()
@@ -213,7 +223,7 @@ def sendcsv_mail_with_attachment(send_from, send_to, subject, text, files=None, 
     msg['Date'] = formatdate(localtime=True)
     msg['Subject'] = subject
     msg.attach(MIMEText(text))
-    print(files)
+    #print(files)
     for f in files or []:
         with open(f, "rb") as fil:
             part = MIMEApplication(
@@ -236,13 +246,7 @@ def sendcsv_ftp(ftpserver,user,pwd,path,f):
 
 if __name__ == '__main__':
     # define the tracked whales
-    whales = [[154185,'Niaouli','2017-07-24 07:29:58+00:00'],
-    [34215,'Kauri','2017-07-24 07:30:02+00:00'],
-    [34223,'Alis','2017-08-17 10:42:00+00:00'],
-    [34227,'Sunset','2017-08-18 07:35:00+00:00'],
-    [34228,'Ricrac','2017-08-20 05:47:00+00:00'],
-    [34222,'Mouss','2017-08-22 09:15:00+00:00'],
-    [34226 ,'Splash','2017-08-22 18:12:00+00:00']]
+    whales = [[57535,'Oceania','2018-07-17 02:20:00+00:00'],[34350,'Zealandia','2018-07-17 00:13:00+00:00'],[34354,'Nazca','2018-07-20 21:29:00+00:00'],[57538,'Tethys','2018-07-21 03:08:00+00:00'],[57537,'Gondwana','2018-07-21 02:23:00+00:00'],[57536,'Pangea','2018-07-20 22:33:00+00:00']]
     # if running on monday query 4 days, orherwise (thursday) query 3 days
     
     dayofweek=datetime.today().weekday()
@@ -252,7 +256,7 @@ if __name__ == '__main__':
     
     date_N_days_ago = datetime.now() - timedelta(days=dayfromnow)
     
-    positionstoget=200
+    positionstoget=20
     #mail_attachments=[]
     for whale in whales or []:
         # query argos web service by whale id (program 6145)
@@ -264,7 +268,7 @@ if __name__ == '__main__':
         # convert for DTSI
         dtsi_file = convertCSV_for_DTSI(argos_file,date_N_days_ago)
     # updload on ftp
-    sendcsv_ftp("ftpriv.ird.nc","maracas","unM3@1*cs","/",dtsi_file)
+    #sendcsv_ftp("ftpriv.ird.nc","maracas","unM3@1*cs","/",dtsi_file)
     # send mail  
     sendcsv_mail_with_attachment("sylvie.fiat@ird.fr",["sylvie.fiat@ird.fr"], "Nouveau relevé Argos de positions Baleines projet WHERE","Bonjour, en pièce jointe le nouveau relevé Argos des positions des baleines du projet WHERE, Cordialement, Sylvie",[dtsi_file],"172.17.0.1")
         
